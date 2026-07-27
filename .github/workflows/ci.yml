@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - '**.md'
+      - 'userdata/**'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  # ── Build & test the launcher + test_actions (MSVC, always works) ──
+  launcher:
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}\PvZ2Native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Configure CMake (MSVC)
+        run: |
+          cmake -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -B build -S .
+
+      - name: Build launcher
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --target launcher
+
+      - name: Build test_actions
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --target test_actions
+
+      - name: Run tests
+        run: build\${{ env.BUILD_TYPE }}\test_actions.exe
+
+      - name: Upload launcher artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: build\${{ env.BUILD_TYPE }}\launcher.exe
+          if-no-files-found: error
+
+  # ── Full release build (requires MinGW toolchain) ──
+  release:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    needs: [launcher]
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}\PvZ2Native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download launcher artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: build\${{ env.BUILD_TYPE }}
+
+      # The full game build requires a custom MinGW toolchain at
+      # C:/mingw64roblauncher/bin/ and Python virtual env at
+      # third_party/pyenv/ (both outside the repo).  When setting up
+      # a self-hosted runner, install those and uncomment below.
+
+      # - name: Configure CMake (MinGW)
+      #   run: |
+      #     cmake -G "MinGW Makefiles" `
+      #       -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+      #       -DCMAKE_C_COMPILER=C:/mingw64roblauncher/bin/gcc.exe `
+      #       -DCMAKE_CXX_COMPILER=C:/mingw64roblauncher/bin/g++.exe `
+      #       -DCMAKE_MAKE_PROGRAM=C:/mingw64roblauncher/bin/make.exe `
+      #       -DBOOST_ROOT="${{ github.workspace }}\third_party\boost_1_84_0" `
+      #       -DDYNARMIC_USE_PRECOMPILED_HEADERS=OFF `
+      #       -DPython_EXECUTABLE="${{ github.workspace }}\third_party\pyenv\Scripts\python.exe" `
+      #       -B build-mingw -S .
+      #
+      # - name: Build game
+      #   run: cmake --build build-mingw
+
+      # - name: Create release zip
+      #   shell: pwsh
+      #   run: |
+      #     $ver = "v1.0"
+      #     $zip = "PvZ2Native_$ver.zip"
+      #     $dst = "release\PvZ2Native_$ver"
+      #     New-Item -ItemType Directory -Path $dst -Force
+      #     Copy-Item "launcher.exe" "$dst\"
+      #     Copy-Item "build-mingw\pvz2native.exe" "$dst\"
+      #     Copy-Item "lib\libPVZ2.so" "$dst\lib\"
+      #     7z a -r "$zip" "$dst\*"
+      #     Move-Item "$zip" "release\"
+
+      # - name: Upload release zip
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: PvZ2Native-release-${{ github.sha }}
+      #     path: release\PvZ2Native_*.zip
+      #     if-no-files-found: warn
+
+  # ── Tag → GitHub Release ──
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [launcher]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: release
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/launcher.exe
+          generate_release_notes: true
