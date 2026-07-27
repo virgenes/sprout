@@ -1,107 +1,203 @@
-# PvZ2Native
+# Sprout 🌱
 
-📖 [Español](readme_spanish.md) · **English**
+[Español](readme_spanish.md) · **English**
 
-**Runs the real native library of *Plants vs. Zombies 2* for Android (`libPVZ2.so`, ARM32) on PC.** The only thing that is emulated is the **CPU**: PvZ2 exists only compiled for ARM (there is no x86/x64 build), so a JIT translates its ARM instructions to x86_64. Everything else — Android, JNI, libc, OpenGL ES, the filesystem — **is not emulated, it is reimplemented natively**, the same way **Wine** does with Windows.
+**Sprout** is a complete desktop solution for running *Plants vs. Zombies 2* on PC. It combines an ARM emulation layer (the engine) with a full-featured graphical launcher — controls editor, gamepad support, OpenGL 2.0 rendering, and more — all in one package.
 
-> [!WARNING]
-> Experimental project under active development. It boots as far as the main-menu load; rendering, audio and input are work in progress. **The game is not included**: you must supply your own `libPVZ2.so` and your own `.obb`.
+> **You must supply your own game files.** Sprout does not distribute `libPVZ2.so`, `.obb` files, or any other copyrighted material.
 
 ---
 
-## 📖 What it is (and what it is NOT)
+## Table of Contents
 
-It is not a *port* of the game's source code. It is a **hybrid of two techniques**, and the distinction matters:
+- [Features](#features)
+- [Architecture](#architecture)
+- [Launcher](#launcher)
+- [Controls](#controls)
+- [Supported versions](#supported-versions)
+- [Quick start](#quick-start)
+- [Building](#building)
+- [Project structure](#project-structure)
+- [Credits](#credits)
+- [License](#license)
 
-- **Only the CPU is emulated.** The game binary is ARM machine code and PvZ2 was never compiled for x86/x64, so there is no way to run it directly on a PC processor. A JIT (dynarmic) reads those ARM instructions and translates them to x86_64 on the fly. This is the only "emulated" part.
-- **Android is NOT emulated: it is reimplemented.** When the game calls an Android function (open a file, draw with OpenGL ES, allocate memory, invoke Java…), that call is serviced by **native PC code** that does the real work using the equivalent desktop API. There is no virtual Android running underneath; there is a **reimplementation** of the functions the game needs.
+---
 
-This is exactly **Wine's** approach — *"Wine Is Not an Emulator"* — taken one step further: Wine reimplements Windows calls without emulating anything because `.exe` files are already x86; here, because the game is ARM, the CPU has to be emulated as well. The rest of the philosophy is identical: **translate calls, don't simulate a whole machine.**
+## Features
 
-```text
-┌──────────────────────────────────────────────┐
-│   libPVZ2.so  (ELF ARM32, EABI5, untouched)   │   ← the real Android game
-└───────────────────────┬──────────────────────┘
-                        │  ARM instructions
-                        ▼
-┌──────────────────────────────────────────────┐
-│   dynarmic  —  JIT ARM32 → x86_64             │   ← ONLY emulated component
-└───────────────────────┬──────────────────────┘      (the CPU only)
-                        │  "Android" calls
-                        ▼
-┌──────────────────────────────────────────────┐
-│   Compatibility layer (this project)          │   ← NATIVE reimplementation,
-│                                               │      Wine-style (nothing emulated)
-│   Fake JNI / JavaVM    ·   libc / libm / libz │
-│   OpenGL ES → OpenGL   ·   OpenSL ES → SDL    │
-│   Own GuestHeap        ·   VFS (paths + .obb) │
-└───────────────────────┬──────────────────────┘
-                        │
-                        ▼
-┌──────────────────────────────────────────────┐
-│   Windows x64  ·  SDL2  ·  OpenGL 2.0 (glad)  │
-└──────────────────────────────────────────────┘
+### Launcher
+
+- **Visual controls editor** — remap every game action to any keyboard key or gamepad button through a clean GUI
+- **Gamepad support** — Xbox, PlayStation, and generic controllers; live input detection; per-action mapping with dead zone and axis configuration
+- **Language selector** — set the game's internal locale (`en_US`, `es_ES`, etc.)
+- **Emulated IAP** — toggle simulated purchase responses for testing
+- **Persistent config** — all settings saved to `config.ini`, generated automatically on first launch
+- **Game path configuration** — point to your `libPVZ2.so` and `.obb` through the UI
+
+### Engine
+
+- **JIT CPU emulation** — [dynarmic](https://github.com/dynarmic/dynarmic) translates ARM32 instructions to x86_64 in real time
+- **Android API reimplementation** (Wine-style) — OpenGL ES → OpenGL 2.0, OpenSL ES → SDL audio, fake JNI/JavaVM for Java calls
+- **Guest memory manager** — secure heap with quarantine zone for use-after-free detection
+- **Virtual file system** — maps Android paths to PC locations, reads `.obb` assets (RSB/RSG format)
+- **Multi-version support** — byte fingerprints detect the game version and load correct symbol offsets automatically
+
+### Graphics & Input
+
+- **OpenGL 2.0 compatibility profile** — runs on virtually any GPU
+- **Window resizing** with automatic scaling and click remapping
+- **Frame limiter** for consistent game speed
+- **Full keyboard + mouse mapping** — every game action configurable
+- **Gamepad hot-plugging** — connect and disconnect without restart
+
+---
+
+## Architecture
+
+The original codebase was a **monolith** — game addresses, runtime logic, and system call handlers were intertwined. Supporting a new game version meant hunting through the entire codebase for hardcoded offsets.
+
+Sprout refactored everything into an **orchestrator architecture** with a strict layering rule:
+
+> **Only one layer may contain concrete addresses from the `.so`.**
+> The rest operate exclusively through that layer.
+
+### Layer diagram
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     LAUNCHER (GUI)                        │
+│  controls editor · gamepad config · IAP toggle · locale   │
+└────────────────────────┬─────────────────────────────────┘
+                         │ launches
+                         ▼
+┌──────────────────────────────────────────────────────────┐
+│  ENGINE (orchestrator)                                    │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐               │
+│  │  engine/ │  │  game/   │  │  dex/    │               │
+│  │  boot    │  │ symbols  │  │  JNIEnv  │               │
+│  │  frame   │──│ (addrs!) │──│  hooks   │               │
+│  │  lifecycle│  └──────────┘  └──────────┘               │
+│  └──────────┘                                            │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐               │
+│  │runtime/  │  │dependenc.│  │diagnostic│               │
+│  │JIT, heap │  │libc, GLES│  │probes    │               │
+│  └──────────┘  └──────────┘  └──────────┘               │
+└──────────────────────────────────────────────────────────┘
 ```
 
-When the game asks the operating system for something (open a file, allocate memory, draw, play a sound, call into Java), that call leaves the emulated code as a trap and is serviced by a *handler* in this layer, backed by the equivalent PC API.
+### What each layer does
+
+| Layer | Responsibility | Holds `.so` addresses? |
+|---|---|---|
+| [runtime/](pvz2native/src/runtime/) | JIT execution, guest heap, threads, synchronization, RSB cache | **Never** |
+| [game/symbols.cpp](pvz2native/src/game/symbols.cpp) | Symbol table — maps function names to addresses per version | **The only one** |
+| [engine/](pvz2native/src/engine/) | Boot sequence, lifecycle, frame loop — calls symbols through `sym()` | Only via `sym()` |
+| [dependencies/](pvz2native/src/dependencies/) | Handlers for every Android `.so` (libc, libm, GLES, OpenSL ES, libz, libdl, libstdcxx, liblog) | No |
+| [dex/](pvz2native/src/dex/) | Fake `JNIEnv`/`JavaVM` + one file per hooked Java class | No |
+| [diagnostics/](pvz2native/src/diagnostics/) | Watchpoints, PC sampling, guest probes | Only via `sym()` |
+
+### Why this matters
+
+Adding support for a new game version requires **exactly one change**: a new entry in `kVersions` inside `symbols.cpp`. The engine, runtime, dependencies, and hooks remain untouched.
+
+The engine orchestrates the boot without knowing where anything lives in memory. Dependencies are registered by name and dispatched automatically. The launcher drives the whole thing through config files — no recompilation needed to switch game versions.
 
 ---
 
-## 🧩 Architecture
+## Launcher
 
-The code lives in [pvz2native/](pvz2native/) and is split into layers under one strict rule: **only one layer may contain concrete addresses from the `.so`.** That is what makes supporting another game version a matter of adding data, not rewriting logic.
+The launcher (`sprout.exe`) provides a full graphical interface for configuring and running the game:
 
-| Layer | Question it answers | May it hold a `.so` address? |
-| --- | --- | :---: |
-| [runtime/](pvz2native/src/runtime/) | How to run ARM code (JIT, heap, threads, synchronization) | **Never** |
-| [game/symbols.cpp](pvz2native/src/game/symbols.cpp) | Where each thing lives in *this* binary | **The only one that may** |
-| [engine/](pvz2native/src/engine/) | What to call and in what order (boot, lifecycle, frame) | Only via `sym()` |
-| [dependencies/](pvz2native/src/dependencies/) | How to answer each Android `.so` (libc, libm, GLES, …) | No |
-| [dex/](pvz2native/src/dex/) | How to answer the Java side (fake JNIEnv + per-class hooks) | No |
-| [diagnostics/](pvz2native/src/diagnostics/) | How to interrogate the guest (watchpoints, PC sampling) | Only via `sym()` |
+- **Controls tab** — visual grid showing every game action mapped to your keyboard/gamepad. Click any entry to rebind. Swap between keyboard and gamepad layouts.
+- **Gamepad tab** — configure stick dead zones, trigger thresholds, invert axes, and test input live
+- **Graphics tab** — window mode, resolution, frame limiter settings
+- **Language tab** — pick the game's display language from a dropdown
+- **IAP toggle** — flip a switch to enable/disable emulated in-app purchases
+- **Paths tab** — browse for your `libPVZ2.so` and `.obb` files
 
-Notable pieces:
-
-- **JIT:** [dynarmic](dynarmic/) (A32 frontend only). One JIT per guest thread, with an identity *page table* over the `.so`'s memory for speed.
-- **Native dependencies:** one module per Android `.so` the game links against. libc is split by header (`string`, `stdio`, `stdlib`, `time`, `pthread`, `locale`, `ctype`, …), plus `libm`, `libz`, `liblog`, `libgles`, `libstdcxx`, `libopensles`, `libdl`. Each handler is a `void(GuestCall&)` registered by name.
-- **Java side:** [jni_env.cpp](pvz2native/src/dex/jni_env.cpp) implements a fake `JNIEnv`/`JavaVM` (objects, strings, arrays, references); [dex/hooks/](pvz2native/src/dex/hooks/) has one file per Java class (`AndroidGameApp`, `AndroidSurfaceView`, HTTP, Google Play, Facebook…).
-- **Graphics:** the game's GLES calls are translated to **OpenGL 2.0 (compatibility profile)** via `glad`; SDL provides the window and GL context, playing the role of Android's `GLSurfaceView`.
-- **Resources:** a VFS translates Android paths to PC paths and reads assets from the game's real `.obb` (RSB/RSG format).
+All settings persist in `config.ini`, fully documented with inline comments.
 
 ---
 
-## 🎮 Supported game versions
+## Controls
 
-The version is detected by a **byte fingerprint** at two known native functions; if none matches, boot is refused rather than running blind.
+### Default keyboard layout
 
-| Version | APK / OBB | Status |
-| --- | --- | --- |
-| **1.6.10** (2013) | `main.7.com.ea.game.pvz2_na.obb` | 🟢 Boots to the menu |
-| **4.5.2** (2016) | `main.147.com.ea.game.pvz2_row.obb` | 🟢 Boots to the menu |
+| Action | Key |
+|---|---|
+| Tap / select | Left click |
+| Drag / swipe | Left click + move |
+| Type text | Keyboard (when a text field is open) |
+| Confirm | `Enter` |
+| Delete / Back | `Backspace` |
+| Pause | `Escape` |
+| Place plant (slot 1-8) | `1`–`8` |
+| Speed up | `Space` |
 
-Adding a new version = one entry in `kVersions` in [symbols.cpp](pvz2native/src/game/symbols.cpp). Nothing in `runtime/` or `engine/` changes between versions.
+### Gamepad
+
+- All actions mappable through the launcher's controls editor
+- Left stick → drag, Right stick → scroll (configurable)
+- Face buttons → plant slots, triggers → confirm/cancel
+- Start → pause, Select → speed up
+
+Every binding is customizable. The launcher detects your controller model and applies sensible defaults.
 
 ---
 
-## ⚙️ Requirements
+## Supported versions
 
-- **64-bit Windows** (the executable is static x86_64; there is no 32-bit build — dynarmic only ships backends for x86_64/arm64/riscv64).
-- **MinGW-w64** (GCC with C++20 support) and **CMake**.
-- A **GPU with OpenGL 2.0** or higher (GLSL 1.10 / `#version 110`).
-- Your own copy of **`libPVZ2.so`** and the matching **`.obb`**, extracted from the Android game.
+The game version is detected by **byte fingerprint** at two known native functions. If no fingerprint matches, boot is refused rather than running blind.
+
+| Version | OBB | Status |
+|---|---|---|
+| **1.6.10** (2013) | `main.7.com.ea.game.pvz2_na.obb` | Boots to menu |
+| **4.5.2** (2016) | `main.147.com.ea.game.pvz2_row.obb` | Boots to menu |
+
+To add a version: add one entry to `kVersions` in [symbols.cpp](pvz2native/src/game/symbols.cpp).
 
 ---
 
-## 🔨 Building
+## Quick start
 
-The project builds with MinGW + CMake. The quick way is [compile.bat](compile.bat):
+1. Download the latest release from the [Releases](https://github.com/virgenes/sprout/releases) page
+2. Extract `Sprout_v1.0.zip` to a folder of your choice
+3. Copy your `libPVZ2.so` and the matching `.obb` into the `lib/` subfolder
+4. Run `Sprout.exe`
+5. The launcher opens — configure controls and paths, then click **Launch**
+
+### Manual setup
+
+Create this structure next to `sprout.exe`:
+
+```
+├── Sprout.exe
+├── config.ini          (auto-generated on first launch)
+└── lib/
+    ├── libPVZ2.so
+    └── main.7.com.ea.game.pvz2_na.obb
+```
+
+---
+
+## Building
+
+### Requirements
+
+- **Windows x64**
+- **MinGW-w64** (GCC with C++20 support)
+- **CMake** ≥ 3.16
+- **Boost** (for dynarmic)
+- **Python 3** (for build scripts)
+- GPU with **OpenGL 2.0** or higher
+
+### Compile
 
 ```bat
 compile.bat
 ```
 
-> [!NOTE]
-> `compile.bat` has toolchain paths **hardcoded to the author's machine** (`CMAKE_C_COMPILER`, `CMAKE_MAKE_PROGRAM`, `BOOST_ROOT`, `Python_EXECUTABLE`). Adjust them to your own before using it, or invoke CMake by hand:
+> The `.bat` file has toolchain paths hardcoded to the author's machine. Adjust `CMAKE_C_COMPILER`, `CMAKE_MAKE_PROGRAM`, `BOOST_ROOT`, and `Python_EXECUTABLE` to match your setup, or invoke CMake manually:
 
 ```bash
 mkdir build && cd build
@@ -109,129 +205,52 @@ cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
 cmake --build .
 ```
 
-The executable ends up at:
+The binaries land in `build/sprout/`.
 
-```text
-build/pvz2native/pvz2native.exe
+---
+
+## Project structure
+
 ```
-
-Incremental rebuild (after the first `cmake`):
-
-```bash
-cd build
-make pvz2native      # with the MinGW make
-```
-
----
-
-## ▶️ Running
-
-1. Place the game files next to the executable, by default in a `lib/` folder:
-
-   ```text
-   build/pvz2native/
-   ├── pvz2native.exe
-   ├── config.ini            (generated automatically on first launch)
-   └── lib/
-       ├── libPVZ2.so
-       └── main.7.com.ea.game.pvz2_na.obb
-   ```
-
-2. Run `pvz2native.exe`. On the first launch it writes a `config.ini` with every option documented and turned off.
-
-If your files live elsewhere or you want to try 4.5.2, edit `config.ini`:
-
-```ini
-[paths]
-so  = lib/libPVZ2.so
-obb = lib/main.7.com.ea.game.pvz2_na.obb
-```
-
----
-
-## 🔧 Configuration (`config.ini`)
-
-Single source of truth for paths and debugging (the old `PVZ2_*` environment variables are no longer read). Excerpt of the most useful sections:
-
-| Section | Key | What it does |
-| --- | --- | --- |
-| `[paths]` | `so`, `obb` | Paths to the `.so` and `.obb` (relative to the `.exe`, or absolute). |
-| `[log]` | `verbose` | One banner per `.init_array` entry and lifecycle call. |
-| `[log]` | `trace` | Per-import-call trace. **Very loud** (~57 MB of stdout per run). |
-| `[log]` | `pc_sample` | PC sampling / hot-frame slicing. |
-| `[gl]` | `strict` | Queries GL state after every suspicious call and reports mismatches. |
-| `[gl]` | `debug_clear` | A loud clear colour instead of the engine's opaque black. |
-| `[runtime]` | `heap_quarantine` | Holds the N most-recently-freed blocks out of the reuse pool (hunts use-after-free). |
-| `[game]` | `user_locale` | The locale the game is told about, e.g. `en_US`. |
-
----
-
-## ⌨️ Controls
-
-| Action | Control |
-| --- | --- |
-| Tap / select | Left click |
-| Drag (swipe) | Left click + move |
-| Type text | Keyboard (only when the game opens a field) |
-| Confirm / Delete | `Enter` / `Backspace` |
-| **Quit** | `ESC` or close the window |
-
-The window is resizable: the scene renders at a fixed resolution and the compositor scales it, remapping clicks back into the game's space.
-
----
-
-## 📊 Project status
-
-| Area | Status |
-| --- | --- |
-| `.so` loading and engine boot | 🟢 |
-| Lifecycle (init / surface / frames) | 🟢 |
-| Resource loading (RSB/RSG from `.obb`) | 🟢 |
-| Native imports (libc/libm/GLES/…) | 🟢 All have a handler |
-| Rendering | 🟡 In progress |
-| Audio (OpenSL ES → SDL) | 🟡 In progress |
-| Input (touch/mouse/keyboard) | 🟡 In progress |
-| Saving and online services | 🔴 Not implemented (deliberately offline) |
-
----
-
-## 📁 Project structure
-
-```text
-PvZ2Native/
-├── pvz2native/            ← this project's code
-│   ├── src/
-│   │   ├── runtime/       ← JIT (dynarmic), GuestHeap, threads, synchronization, RSB
-│   │   ├── dependencies/  ← one module per Android .so (libc, libm, GLES, …) + VFS
-│   │   ├── dex/           ← fake JNIEnv/JavaVM + per-Java-class hooks
-│   │   ├── engine/        ← boot / lifecycle / frame
-│   │   ├── game/          ← symbols.cpp: addresses per binary version
-│   │   ├── diagnostics/   ← watchpoints, probes, PC sampling
-│   │   ├── gfx/, audio/, input/, patch/, elf32/
-│   │   ├── config.cpp     ← config.ini reader
-│   │   └── main.c         ← SDL window + frame loop
-│   └── include/pvz2native/
-├── dynarmic/              ← ARM JIT (submodule/dependency)
-├── SDL/  glad/  zlib/  stb/  third_party/
-├── compile.bat           ← MinGW build
+Sprout/
+├── pvz2native/               ← engine + launcher source
+│   ├── include/sprout/       ← public headers
+│   ├── src/                  ← engine implementation
+│   │   ├── runtime/          ← JIT, guest heap, threads
+│   │   ├── dependencies/     ← Android .so reimplementations
+│   │   ├── dex/              ← fake JNI/JavaVM + class hooks
+│   │   ├── engine/           ← boot, lifecycle, frame loop
+│   │   ├── game/             ← symbols (the only layer with addresses)
+│   │   ├── diagnostics/      ← watchpoints, probes
+│   │   ├── gfx/              ← OpenGL ES → OpenGL translation
+│   │   ├── audio/            ← OpenSL ES → SDL audio
+│   │   ├── input/            ← keyboard, mouse, gamepad
+│   │   ├── patch/            ← runtime code patching
+│   │   └── elf32/            ← ELF loader
+│   ├── launcher/             ← GUI (controls editor, config, etc.)
+│   └── tests/                ← unit tests
 ├── CMakeLists.txt
+├── compile.bat
 └── README.md
 ```
 
 ---
 
-## 📜 License
+## Credits
 
-Code under the **MIT license** (see [LICENSE](LICENSE)). The project reuses third-party emulation infrastructure (dynarmic, SDL, zlib, glad, stb), each with its own license.
+- **[Maximo](https://www.pvz2.app/)** — original insight and foundational research that made this project possible
+- **[Optijuegos](https://www.youtube.com/@Optijuegos)** — community support and beta testing
 
-**Plants vs. Zombies 2**, its trademarks and all its assets belong to **Electronic Arts / PopCap Games**. This project **does not distribute or replace** any game file: you must supply your own, obtained legally.
+---
 
-## ⚠️ Disclaimer
+## License
 
-Independent project, **not affiliated with, endorsed by, or sponsored by** Electronic Arts, PopCap Games or any entity related to Plants vs. Zombies. Its purpose is strictly **technical and educational**: research into ARM binary emulation, compatibility layers, and API translation.
+Code is **MIT** (see [LICENSE](LICENSE)). Third-party dependencies (dynarmic, SDL, zlib, glad, stb) carry their own licenses.
+
+*Plants vs. Zombies 2* and all related assets are trademarks of **Electronic Arts / PopCap Games**. This project is **not affiliated with, endorsed by, or sponsored by** EA or PopCap. It does not distribute any game files — you must provide your own, obtained legally.
 
 ---
 
 <p align="center">
-  <b>PvZ2Native</b> — Running Android's <code>libPVZ2.so</code> on PC through ARM emulation
+  <b>Sprout</b> — Growing PvZ2 on PC, one native call at a time
 </p>
