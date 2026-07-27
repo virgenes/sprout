@@ -4,9 +4,9 @@
 
 **Sprout** is a complete desktop solution for running *Plants vs. Zombies 2* on PC. It combines an ARM emulation layer (the engine) with a full-featured graphical launcher — controls editor, gamepad support, OpenGL 2.0 rendering, and more — all in one package.
 
-> **You must supply your own game files.** Sprout does not distribute `libPVZ2.so`, `.obb` files, or any other copyrighted material.
-
 ---
+
+
 
 ## Table of Contents
 
@@ -44,7 +44,7 @@
 
 ### Graphics & Input
 
-- **OpenGL 2.0 compatibility profile** — runs on virtually any GPU
+- **OpenGL 2.0** — runs on virtually any GPU
 - **Window resizing** with automatic scaling and click remapping
 - **Frame limiter** for consistent game speed
 - **Full keyboard + mouse mapping** — every game action configurable
@@ -162,23 +162,12 @@ To add a version: add one entry to `kVersions` in [symbols.cpp](pvz2native/src/g
 
 1. Download the latest release from the [Releases](https://github.com/virgenes/sprout/releases) page
 2. Extract `Sprout_v1.0.zip` to a folder of your choice
-3. Copy your `libPVZ2.so` and the matching `.obb` into the `lib/` subfolder
-4. Run `Sprout.exe`
-5. The launcher opens — configure controls and paths, then click **Launch**
-
-### Manual setup
-
-Create this structure next to `sprout.exe`:
-
-```
-├── Sprout.exe
-├── config.ini          (auto-generated on first launch)
-└── lib/
-    ├── libPVZ2.so
-    └── main.7.com.ea.game.pvz2_na.obb
-```
+3. Run `sprout.exe`
+4. The launcher opens — the `.obb` is created automatically on first launch
 
 ---
+
+
 
 ## Building
 
@@ -187,9 +176,6 @@ Create this structure next to `sprout.exe`:
 - **Windows x64**
 - **MinGW-w64** (GCC with C++20 support)
 - **CMake** ≥ 3.16
-- **Boost** (for dynarmic)
-- **Python 3** (for build scripts)
-- GPU with **OpenGL 2.0** or higher
 
 ### Compile
 
@@ -247,7 +233,7 @@ Sprout/
 
 Code is **MIT** (see [LICENSE](LICENSE)). Third-party dependencies (dynarmic, SDL, zlib, glad, stb) carry their own licenses.
 
-*Plants vs. Zombies 2* and all related assets are trademarks of **Electronic Arts / PopCap Games**. This project is **not affiliated with, endorsed by, or sponsored by** EA or PopCap. It does not distribute any game files — you must provide your own, obtained legally.
+*Plants vs. Zombies 2* and all related assets are trademarks of **Electronic Arts / PopCap Games**. This project is **not affiliated with, endorsed by, or sponsored by** EA or PopCap.
 
 ---
 

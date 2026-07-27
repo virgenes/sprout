@@ -4,8 +4,6 @@
 
 **Sprout** es una solución completa de escritorio para ejecutar *Plants vs. Zombies 2* en PC. Combina una capa de emulación ARM (el motor) con un lanzador gráfico con todas las funciones — editor de controles, soporte para gamepad, renderizado OpenGL 2.0 y mucho más — todo en un solo paquete.
 
-> **Debes aportar tus propios archivos del juego.** Sprout no distribuye `libPVZ2.so`, archivos `.obb` ni ningún otro material protegido por derechos de autor.
-
 ---
 
 ## Índice
@@ -162,21 +160,8 @@ Para añadir una versión: agrega una entrada a `kVersions` en [symbols.cpp](pvz
 
 1. Descarga la última versión desde la página de [Releases](https://github.com/virgenes/sprout/releases)
 2. Extrae `Sprout_v1.0.zip` en una carpeta
-3. Copia tu `libPVZ2.so` y el `.obb` correspondiente a la subcarpeta `lib/`
-4. Ejecuta `Sprout.exe`
-5. Se abre el lanzador — configura controles y rutas, luego haz clic en **Launch**
-
-### Configuración manual
-
-Crea esta estructura junto a `sprout.exe`:
-
-```
-├── Sprout.exe
-├── config.ini          (se genera solo al primer inicio)
-└── lib/
-    ├── libPVZ2.so
-    └── main.7.com.ea.game.pvz2_na.obb
-```
+3. Ejecuta `sprout.exe`
+4. El lanzador se abre — el `.obb` se crea automáticamente al primer inicio
 
 ---
 
@@ -187,9 +172,6 @@ Crea esta estructura junto a `sprout.exe`:
 - **Windows x64**
 - **MinGW-w64** (GCC con soporte C++20)
 - **CMake** ≥ 3.16
-- **Boost** (para dynarmic)
-- **Python 3** (para scripts de build)
-- GPU con **OpenGL 2.0** o superior
 
 ### Compilar
 
@@ -247,7 +229,7 @@ Sprout/
 
 El código tiene **licencia MIT** (ver [LICENSE](LICENSE)). Las dependencias de terceros (dynarmic, SDL, zlib, glad, stb) tienen sus propias licencias.
 
-*Plants vs. Zombies 2* y todos los recursos relacionados son marcas registradas de **Electronic Arts / PopCap Games**. Este proyecto **no está afiliado, respaldado ni patrocinado por** EA o PopCap. No distribuye ningún archivo del juego — debes aportar los tuyos, obtenidos legalmente.
+*Plants vs. Zombies 2* y todos los recursos relacionados son marcas registradas de **Electronic Arts / PopCap Games**. Este proyecto **no está afiliado, respaldado ni patrocinado por** EA o PopCap.
 
 ---
 
