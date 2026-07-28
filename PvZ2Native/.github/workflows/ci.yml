@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - '**.md'
+      - 'userdata/**'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  # ── Build launcher + test_actions (MSVC, fast) ──
+  launcher:
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}\PvZ2Native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Configure CMake (MSVC)
+        run: |
+          cmake -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -B build -S .
+
+      - name: Build launcher
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --target launcher
+
+      - name: Build test_actions
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --target test_actions
+
+      - name: Run tests
+        run: build\${{ env.BUILD_TYPE }}\test_actions.exe
+
+      - name: Upload launcher
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: build\${{ env.BUILD_TYPE }}\launcher.exe
+          if-no-files-found: error
+
+  # ── Full engine build (MinGW via MSYS2) ──
+  engine:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-boost
+            mingw-w64-x86_64-python
+
+      - name: Configure CMake
+        shell: msys2 {0}
+        run: |
+          cd "${{ github.workspace }}/PvZ2Native"
+          cmake -G "Ninja" \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DDYNARMIC_USE_PRECOMPILED_HEADERS=OFF \
+            -B build -S .
+
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          cd "${{ github.workspace }}/PvZ2Native"
+          cmake --build build
+
+      - name: Run tests
+        shell: msys2 {0}
+        run: |
+          cd "${{ github.workspace }}/PvZ2Native"
+          build/test_actions.exe
+
+      - name: Validate symbol script
+        shell: msys2 {0}
+        run: |
+          cd "${{ github.workspace }}/PvZ2Native"
+          python3 tools/gen_symbols.py --help
+
+      - name: Upload engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-${{ github.sha }}
+          path: ${{ github.workspace }}\PvZ2Native\build\sprout.exe
+          if-no-files-found: error
+
+  # ── Release zip (on tag) ──
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [launcher, engine]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-${{ github.sha }}
+          path: _release
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-${{ github.sha }}
+          path: _release
+
+      - name: Build release zip
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $zip = "Sprout_$ver.zip"
+          $dst = "_release\Sprout_$ver"
+          New-Item -ItemType Directory -Path "$dst\lib" -Force
+          Copy-Item "_release\launcher.exe" "$dst\Sprout.exe"
+          Copy-Item "_release\sprout.exe" "$dst\bin\"
+          7z a -r "$zip" "$dst\*"
+          Move-Item "$zip" "release\"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/Sprout_*.zip
+          generate_release_notes: true

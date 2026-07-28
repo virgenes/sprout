@@ -1,0 +1,59 @@
+# Build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.dir/
+*.lib
+*.dll
+*.exe
+*.pdb
+*.obj
+*.exp
+*.ilk
+*.log
+*.tlog
+*.lastbuildstate
+*.manifest
+ipch/
+*.sdf
+*.opensdf
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+MetricsCache/
+stderr*.txt
+stdout*.txt
+*.pc
+*.spec
+
+# Dependencies
+dynarmic/
+glad/
+gladsources/
+SDL/
+zlib/
+
+# Web page (separate project)
+Pagina WEB/
+
+# User data
+userdata/
+
+# IDE
+.vs/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Large files
+Pagina WEB.zip
+MetricsCache
+CPack*.cmake

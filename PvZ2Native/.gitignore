@@ -1,0 +1,52 @@
+# Build outputs
+build/
+build-x64/
+build-win32/
+build-mingw/
+build-fresh/
+*.exe
+*.obj
+*.o
+*.lib
+*.a
+*.dll
+cmake_out*.txt
+
+# IDE
+.vs/
+.idea/
+*.suo
+*.sdf
+*.user
+CMakeSettings.json
+*.vcxproj
+*.vcxproj.filters
+*.sln
+cmake_install.cmake
+CMakeFiles/
+
+# Save data & runtime
+userdata/
+MetricsCache
+*.log
+stdout*.txt
+stderr*.txt
+
+# Runtime assets (copied manually, not source)
+lib/
+
+# Temp / generated
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Dependencies — tracked via git submodules
+# Initialize with: git submodule update --init --recursive
+third_party/
+SDL/
+dynarmic/
+glad/
+zlib/
+stb/
+nix2/
