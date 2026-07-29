@@ -1,0 +1,35 @@
+// Windows resource script for sprout.exe
+#include <windows.h>
+
+// App icon
+IDI_MAIN_ICON   ICON    "sprout.ico"
+
+// Version info
+1 VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Sprout"
+            VALUE "FileDescription",  "Plants vs Zombies 2 Native Emulator"
+            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "InternalName",     "sprout"
+            VALUE "LegalCopyright",   ""
+            VALUE "OriginalFilename", "sprout.exe"
+            VALUE "ProductName",      "Sprout"
+            VALUE "ProductVersion",   "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
