@@ -16,6 +16,8 @@ extern int g_capturing;
 extern char g_exeDir[1024], g_configPath[1024], g_gamePath[1024], g_obbPath[512];
 extern int g_fpsLimit, g_showConsole, g_emulateIap, g_persistSaves, g_vsync;
 extern char g_locale[64], g_videoMode[16], g_quality[16], g_shadows[16], g_renderScale[8];
+extern char g_renderer[16];  /* "hardware" or "software" */
+extern int g_engineTab;      /* current tab: 0=Options, 1=Engine */
 
 /* ---------- Combo data (shared with main window) ---------- */
 extern const ComboItem kFpsLimit[5];
@@ -28,12 +30,14 @@ extern const ComboItem kShadows[3];
 extern const int kNumShadows;
 extern const ComboItem kRenderScale[5];
 extern const int kNumRenderScale;
+extern const ComboItem kRenderer[2];
+extern const int kNumRenderer;
 extern const LangItem kLangs[12];
 extern const int kNumLangs;
 
 /* ---------- Layout constants ---------- */
 #define WW 580
-#define WH 620
+#define WH 700
 #define MARGIN 30
 #define CARD_L MARGIN
 #define CARD_R (WW - MARGIN)
@@ -42,7 +46,8 @@ extern const int kNumLangs;
 #define CTRL_X 200
 #define CTRL_W 200
 #define CTRL_H 28
-#define BTN_Y 540
+#define TAB_H 32    /* offset for tab bar */
+#define BTN_Y 620
 
 /* ---------- Colors ---------- */
 #define COL_BG     RGB(0x18,0x18,0x24)

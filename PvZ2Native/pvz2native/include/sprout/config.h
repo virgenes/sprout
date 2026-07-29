@@ -26,6 +26,7 @@ typedef struct pvz2_config {
     int gl_flat_fragment;
     int gl_strict;
     int gl_diagnostics;
+    char renderer[16];  /* "hardware" or "software" */
 
     /* [game] */
     char user_locale[32];

@@ -56,7 +56,17 @@ int main(int argc, char **argv) {
 
     pvz2_config_load(config_ini_path(), NULL);
     const pvz2_config_t *cfg = pvz2_config();
-    log_info("so=%s obb=%s", cfg->so_path, cfg->obb_path);
+    log_info("so=%s obb=%s renderer=%s", cfg->so_path, cfg->obb_path, cfg->renderer);
+
+    /* Software renderer: load Mesa3D opengl32.dll before creating GL context */
+    if (strcmp(cfg->renderer, "software") == 0) {
+        const char *mesa_dll = "mesa/opengl32.dll";
+        if (SDL_GL_LoadLibrary(mesa_dll) == 0) {
+            log_info("loaded software renderer: %s", mesa_dll);
+        } else {
+            log_warn("failed to load %s: %s", mesa_dll, SDL_GetError());
+        }
+    }
 
     int rw = 960, rh = 540, start_fs = 0;
     pvz2_choose_window_size(&rw, &rh, &start_fs);

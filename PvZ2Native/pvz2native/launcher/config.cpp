@@ -32,6 +32,8 @@ char g_videoMode[16] = "auto";
 char g_quality[16] = "high";
 char g_shadows[16] = "high";
 char g_renderScale[8] = "1.0";
+char g_renderer[16] = "hardware";
+int g_engineTab = 0;
 
 /* ---------- Combo data ---------- */
 const ComboItem kFpsLimit[] = {{0,L"Uncapped"},{30,L"30 FPS"},{60,L"60 FPS"},{120,L"120 FPS"},{144,L"144 FPS"}};
@@ -44,6 +46,8 @@ const ComboItem kShadows[] = {{2,L"High"},{1,L"Medium"},{0,L"Low"}};
 const int kNumShadows = 3;
 const ComboItem kRenderScale[] = {{0,L"50%"},{1,L"75%"},{2,L"100%"},{3,L"125%"},{4,L"150%"}};
 const int kNumRenderScale = 5;
+const ComboItem kRenderer[] = {{0,L"Hardware (OpenGL)"},{1,L"Software (CPU)"}};
+const int kNumRenderer = 2;
 
 const LangItem kLangs[] = {
     {"en_US",L"English"},{"es_ES",L"Espa\u00F1ol"},{"fr_FR",L"Fran\u00E7ais"},
@@ -136,6 +140,9 @@ void read_config(){
             else if(_stricmp(k,"emulate_iap")==0)g_emulateIap=iv;
             else if(_stricmp(k,"persist_saves")==0)g_persistSaves=iv;
         }
+        else if(_stricmp(sec,"gl")==0){
+            if(_stricmp(k,"renderer")==0&&v[0])strncpy_s(g_renderer,sizeof(g_renderer),v,_TRUNCATE);
+        }
     }
     fclose(f);
 }
@@ -148,11 +155,11 @@ void write_config(){
         "[paths]\nso  = lib/libPVZ2.so\nobb = %s\n\n"
         "[log]\nverbose = 0\ntrace = 0\npc_sample = 0\ninput = 0\n\n"
         "[runtime]\nno_page_table = 0\nheap_quarantine = 0\n\n"
-        "[gl]\ndebug_clear = 0\nno_viewport_fix = 0\nflat_fragment = 0\nstrict = 0\n\n"
+        "[gl]\ndebug_clear = 0\nno_viewport_fix = 0\nflat_fragment = 0\nstrict = 0\nrenderer = %s\n\n"
         "[video]\nmode = %s\nfullscreen = 0\nvsync = %d\nfps_limit = %d\n\n"
         "[graphics]\nquality = %s\nshadows = %s\nrender_scale = %s\n\n"
         "[game]\nuser_locale = %s\nemulate_iap = %d\npersist_saves = %d\nnetwork = none\n",
-        g_obbPath, g_videoMode, g_vsync, g_fpsLimit, g_quality, g_shadows, g_renderScale, g_locale, g_emulateIap, g_persistSaves);
+        g_obbPath, g_renderer, g_videoMode, g_vsync, g_fpsLimit, g_quality, g_shadows, g_renderScale, g_locale, g_emulateIap, g_persistSaves);
     fprintf(f,"\n[controls]\n");
     for(int i=0;i<NUM_BINDS;i++)
         fprintf(f,"%s = %d\ngp_%s = %d\n",

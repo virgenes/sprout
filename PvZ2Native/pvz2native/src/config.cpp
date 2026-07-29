@@ -51,6 +51,7 @@ constexpr char kDefaultIni[] =
     "flat_fragment = 0\n"
     "strict = 0\n"
     "diagnostics = 0\n"
+    "; renderer = hardware  ; hardware or software (Mesa3D CPU)"
     "\n"
     "[graphics]\n"
     "quality = high\n"
@@ -139,6 +140,8 @@ void apply(const std::string &section, const std::string &key, const std::string
         else if (key == "flat_fragment") g_config.gl_flat_fragment = parse_bool(val);
         else if (key == "strict")        g_config.gl_strict = parse_bool(val);
         else if (key == "diagnostics")   g_config.gl_diagnostics = parse_bool(val);
+        else if (key == "renderer" && !trim(val).empty())
+            std::snprintf(g_config.renderer, sizeof(g_config.renderer), "%s", lower(trim(val)).c_str());
     } else if (section == "paths") {
         if (key == "so" && !trim(val).empty())  set_path(g_config.so_path, trim(val));
         else if (key == "obb" && !trim(val).empty()) set_path(g_config.obb_path, trim(val));
@@ -219,6 +222,7 @@ extern "C" void pvz2_config_load(const char *ini_path, const char *base_dir) {
     std::snprintf(g_config.graphics_quality, sizeof(g_config.graphics_quality), "high");
     std::snprintf(g_config.graphics_shadows, sizeof(g_config.graphics_shadows), "high");
     std::snprintf(g_config.render_scale, sizeof(g_config.render_scale), "1.0");
+    std::snprintf(g_config.renderer, sizeof(g_config.renderer), "hardware");
 
     if (ini_path != nullptr) {
         FILE *f = std::fopen(ini_path, "rb");
