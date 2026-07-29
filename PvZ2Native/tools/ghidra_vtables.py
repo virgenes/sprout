@@ -213,40 +213,39 @@ def main():
     print("\n=== Ghidra Decompilation of Key Vtables ===\n", file=sys.stderr)
 
     if not args.no_analysis:
+        import os
         import pyghidra
-        kwargs = {"verbose": True}
+        from pyghidra import open_program
+
         if args.ghidra_dir:
-            kwargs["install_dir"] = args.ghidra_dir
-        launcher = pyghidra.HeadlessPyGhidraLauncher(**kwargs)
-        launcher.start()
-        ctx = launcher.open_program(
+            os.environ["GHIDRA_INSTALL_DIR"] = str(args.ghidra_dir)
+
+        with open_program(
             str(so_path), analyze=True,
             project_name="pvz2_re", project_location=str(so_path.parent),
-        )
-        pgm = ctx.program
+        ) as api:
+            pgm = api.currentProgram
 
-        from ghidra.app.decompiler import DecompInterface
-        from ghidra.util.task import ConsoleTaskMonitor
-        iface = DecompInterface()
-        iface.openProgram(pgm)
+            from ghidra.app.decompiler import DecompInterface
+            from ghidra.util.task import ConsoleTaskMonitor
+            iface = DecompInterface()
+            iface.openProgram(pgm)
 
-        # Decompile the first function in a few representative vtables
-        for v in vtables[:5]:
-            if v["count"] > 0:
-                fn_ptr = struct.unpack_from("<I", data, v["offset"])[0] & ~1
-                addr = pgm.address_factory.getDefaultAddressSpace().getAddress(fn_ptr)
-                fn = pgm.listing.getFunctionContaining(addr)
-                if fn:
-                    res = iface.decompileFunction(fn, 0, ConsoleTaskMonitor())
-                    if res and res.decompileCompleted():
-                        name = guess_class_name(v, vtables)
-                        print(f"\n--- {name} (first vtable entry at 0x{fn_ptr:08x}) ---",
-                              file=sys.stderr)
-                        decomp = res.getDecompiledFunction().getC()
-                        for line in decomp.split("\n")[:15]:
-                            print(f"  {line}", file=sys.stderr)
-
-        ctx.close()
+            # Decompile the first function in a few representative vtables
+            for v in vtables[:5]:
+                if v["count"] > 0:
+                    fn_ptr = struct.unpack_from("<I", data, v["offset"])[0] & ~1
+                    addr = pgm.address_factory.getDefaultAddressSpace().getAddress(fn_ptr)
+                    fn = pgm.listing.getFunctionContaining(addr)
+                    if fn:
+                        res = iface.decompileFunction(fn, 0, ConsoleTaskMonitor())
+                        if res and res.decompileCompleted():
+                            name = guess_class_name(v, vtables)
+                            print(f"\n--- {name} (first vtable entry at 0x{fn_ptr:08x}) ---",
+                                  file=sys.stderr)
+                            decomp = res.getDecompiledFunction().getC()
+                            for line in decomp.split("\n")[:15]:
+                                print(f"  {line}", file=sys.stderr)
 
     # Output summary JSON
     if args.json:

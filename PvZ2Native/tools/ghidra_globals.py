@@ -59,17 +59,33 @@ def parse_args():
 
 
 def open_ghidra(so_path, ghidra_dir=None, analyze=True):
+    import os
     import pyghidra
-    kwargs = {"verbose": True}
+    from pyghidra import open_program
+
     if ghidra_dir:
-        kwargs["install_dir"] = ghidra_dir
-    launcher = pyghidra.HeadlessPyGhidraLauncher(**kwargs)
-    launcher.start()
-    ctx = launcher.open_program(
+        os.environ["GHIDRA_INSTALL_DIR"] = str(ghidra_dir)
+
+    ctx_wrapper = open_program(
         str(so_path), analyze=analyze,
         project_name="pvz2_re", project_location=str(so_path.parent),
     )
-    return ctx
+    api = ctx_wrapper.__enter__()
+    return _GhidraContext(ctx_wrapper, api)
+
+
+class _GhidraContext:
+    """Wrapper around FlatProgramAPI with proper cleanup."""
+
+    def __init__(self, ctx_mgr, api):
+        self._ctx_mgr = ctx_mgr
+        self.api = api
+        self.program = api.currentProgram if api else None
+
+    def close(self):
+        if self._ctx_mgr:
+            self._ctx_mgr.__exit__(None, None, None)
+            self._ctx_mgr = None
 
 
 def read_jni_methods(so_path):
@@ -372,10 +388,11 @@ def main():
     pgm = ctx.program
 
     fn = None
-    for f in pgm.listing.functions(None):  # noqa
-        if f.name and "GameAppInitialize" in f.name:
-            fn = f
-            break
+    if pgm:
+        for f in pgm.listing.functions(None):
+            if f.name and "GameAppInitialize" in f.name:
+                fn = f
+                break
 
     fn_size = 0x600
     if fn:
@@ -399,19 +416,20 @@ def main():
     print("\n=== Ghidra Decompiler Analysis ===", file=sys.stderr)
     print(file=sys.stderr)
 
-    from ghidra.app.decompiler import DecompInterface
-    from ghidra.util.task import ConsoleTaskMonitor
+    if pgm:
+        from ghidra.app.decompiler import DecompInterface
+        from ghidra.util.task import ConsoleTaskMonitor
 
-    iface = DecompInterface()
-    iface.openProgram(pgm)
+        iface = DecompInterface()
+        iface.openProgram(pgm)
 
-    if fn:
-        results = iface.decompileFunction(fn, 0, ConsoleTaskMonitor())
-        if results and results.decompileCompleted():
-            decompiled = results.getDecompiledFunction().getC()
-            print("Decompiled GameAppInitialize (first 50 lines):", file=sys.stderr)
-            for line in decompiled.split("\n")[:50]:
-                print(f"  {line}", file=sys.stderr)
+        if fn:
+            results = iface.decompileFunction(fn, 0, ConsoleTaskMonitor())
+            if results and results.decompileCompleted():
+                decompiled = results.getDecompiledFunction().getC()
+                print("Decompiled GameAppInitialize (first 50 lines):", file=sys.stderr)
+                for line in decompiled.split("\n")[:50]:
+                    print(f"  {line}", file=sys.stderr)
 
     ctx.close()
 
@@ -444,11 +462,14 @@ def main():
                 appdriver = c
                 break
 
+    lawnapp_addr = lawnapp['bss_addr'] if lawnapp else 0
+    appdriver_addr = appdriver['bss_addr'] if appdriver else 0
+    lawnapp_desc = f" /* LawnApp (size={lawnapp['allocation_size']}) */" if lawnapp else ""
+    appdriver_desc = " /* AndroidAppDriver */" if appdriver else ""
+
     print("        /* global */ {")
-    print(f"            0x{lawnapp['bss_addr']:08x} if lawnapp else 0,".split(" if ")[0] + ",")
-    print(f"            \"/* LawnApp (size={lawnapp['allocation_size']}, from new at 0x{lawnapp['call_offset']:08x}) */\",")
-    print(f"            0x{appdriver['bss_addr']:08x} if appdriver else 0,".split(" if ")[0] + ",")
-    print("            \"/* AndroidAppDriver */\",")
+    print(f"            0x{lawnapp_addr:08x},{lawnapp_desc}")
+    print(f"            0x{appdriver_addr:08x},{appdriver_desc}")
     print("        },")
 
     for g in globals_found.values():

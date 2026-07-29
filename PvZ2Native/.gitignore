@@ -41,6 +41,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# RE toolchain outputs (large generated data files)
+ghidra_out/
+tools/ghidra_out/
+*.repacked.obb
+
 # Dependencies — tracked via git submodules
 # Initialize with: git submodule update --init --recursive
 third_party/
