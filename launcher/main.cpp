@@ -109,6 +109,9 @@ static HWND g_hVMode, g_hFps, g_hQual, g_hShadow, g_hScale, g_hLang;
 static HWND g_hVsync, g_hIap, g_hSaves, g_hCon;
 static HWND g_hRend, g_hMsaa, g_hGetMesa, g_hLocateMesaEng;
 
+/* ---------- Forward declarations ---------- */
+static void backup_saves(HWND hwnd);
+
 /* ================================================================
  *  HELPERS — FONTS & BRUSHES
  * ================================================================ */
@@ -806,7 +809,39 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 MessageBoxW(hwnd, L"sprout.exe not found next to launcher.", L"Sprout", MB_ICONERROR);
                 return 0;
             }
-            ShellExecuteA(NULL, "open", exe, NULL, g_exeDir, SW_SHOWNORMAL);
+
+            /* Backup saves before launch */
+            if (g_persistSaves) {
+                backup_saves(hwnd);
+            }
+
+            wchar_t wexe[1024], wdir[1024];
+            _snwprintf_s(wexe, sizeof(wexe)/sizeof(wchar_t), _TRUNCATE, L"\"%hs\"", exe);
+            _snwprintf_s(wdir, sizeof(wdir)/sizeof(wchar_t), _TRUNCATE, L"%hs", g_exeDir);
+            STARTUPINFOW si = { sizeof(si) };
+            PROCESS_INFORMATION pi = { 0 };
+            DWORD fl = CREATE_DEFAULT_ERROR_MODE;
+            if (!g_showConsole) fl |= DETACHED_PROCESS;
+            si.dwFlags = STARTF_USESHOWWINDOW;
+            si.wShowWindow = SW_SHOW;
+            if (!CreateProcessW(NULL, wexe, NULL, NULL, FALSE, fl, NULL, wdir, &si, &pi)) {
+                wchar_t ebuf[256];
+                _snwprintf_s(ebuf, sizeof(ebuf)/sizeof(wchar_t), _TRUNCATE,
+                    L"Launch failed (error %lu).", GetLastError());
+                MessageBoxW(hwnd, ebuf, L"Sprout", MB_ICONERROR);
+                return 0;
+            }
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+
+            /* Write PID so crash handler can locate launcher window */
+            char pid_path[1024];
+            _snprintf_s(pid_path, sizeof(pid_path), _TRUNCATE, "%s\\sprout.pid", g_exeDir);
+            FILE *pf = NULL;
+            if (fopen_s(&pf, pid_path, "w") == 0 && pf) {
+                fprintf(pf, "%lu", pi.dwProcessId);
+                fclose(pf);
+            }
             return 0;
         }
 
@@ -911,6 +946,35 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     return DefWindowProc(hwnd, msg, wp, lp);
+}
+
+/* ================================================================
+ *  backup_saves — backs up save directory before launching
+ * ================================================================ */
+static void backup_saves(HWND hwnd) {
+    char save_dir[1024], bak_dir[1024];
+    _snprintf_s(save_dir, sizeof(save_dir), _TRUNCATE, "%s\\save", g_exeDir);
+    DWORD attr = GetFileAttributesA(save_dir);
+    if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY))
+        return; /* no save dir yet */
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    _snprintf_s(bak_dir, sizeof(bak_dir), _TRUNCATE,
+        "%s\\save_backup_%04d-%02d-%02d_%02d%02d%02d",
+        g_exeDir, st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
+    /* Use SHFileOperation for recursive copy (no extra deps) */
+    SHFILEOPSTRUCTA op = {0};
+    char from[1024], to[1024];
+    _snprintf_s(from, sizeof(from), _TRUNCATE, "%s\0", save_dir);
+    _snprintf_s(to, sizeof(to), _TRUNCATE, "%s\0", bak_dir);
+    op.hwnd   = hwnd;
+    op.wFunc  = FO_COPY;
+    op.pFrom  = from;
+    op.pTo    = to;
+    op.fFlags = FOF_NO_UI;
+    SHFileOperationA(&op);
 }
 
 /* ================================================================

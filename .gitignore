@@ -35,6 +35,14 @@ stderr*.txt
 # Runtime assets (copied manually, not source)
 lib/
 
+# Crash dumps & runtime markers
+*.dmp
+*.crash
+*.pid
+
+# Save backups
+save_backup_*/
+
 # Temp / generated
 __pycache__/
 *.pyc

@@ -15,6 +15,42 @@
 #include <sprout/actions.h>
 #include <sprout/log/log.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+
+static LONG WINAPI crash_handler(EXCEPTION_POINTERS *ep) {
+    /* Try to notify the launcher by writing a crash marker */
+    FILE *cf = fopen("sprout.crash", "w");
+    if (cf) {
+        fprintf(cf, "Exception code: 0x%08lX at 0x%p\n",
+                ep->ExceptionRecord->ExceptionCode,
+                ep->ExceptionRecord->ExceptionAddress);
+        fclose(cf);
+    }
+
+    /* Write minidump */
+    HANDLE hFile = CreateFileA("sprout.dmp", GENERIC_WRITE, 0, NULL,
+                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        MINIDUMP_EXCEPTION_INFORMATION mei;
+        mei.ThreadId          = GetCurrentThreadId();
+        mei.ExceptionPointers = ep;
+        mei.ClientPointers    = TRUE;
+        MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile,
+                          MiniDumpNormal, &mei, NULL, NULL);
+        CloseHandle(hFile);
+    }
+
+    /* Show message box so user knows something happened */
+    MessageBoxA(NULL, "Sprout has crashed.\nA crash dump was saved to sprout.dmp",
+                "Sprout", MB_ICONERROR | MB_OK);
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 static char g_config_ini_path[1024];
 
 static const char *config_ini_path(void) {
@@ -46,8 +82,11 @@ static void pump_events(void) {
 
 
 int main(int argc, char **argv) {
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(crash_handler);
+#endif
     parse_game_parameters(argc, argv);
-    log_init(0);
+    log_init(1);
     log_info("build OK");
     log_info("game_path=%s home_path=%s", game_parameters.game_path, game_parameters.home_path);
 
